@@ -1,0 +1,6 @@
+python-telegram-bot
+ollama
+ffmpeg-python
+pandas
+matplotlib
+python-dotenv
