@@ -1,44 +1,11 @@
-import os, tempfile, datetime as dt, json, sqlite3, ffmpeg, ollama
-import whisper
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, MessageHandler, filters, ContextTypes, CommandHandler, CallbackQueryHandler
-import re
+import os, tempfile, datetime as dt, json
 import csv
 import matplotlib.pyplot as plt
-import subprocess
-
-DB_PATH = os.path.join(os.path.dirname(__file__), "..", "carteira.db")
-DB_PATH = os.path.abspath(DB_PATH)
-
-def init_db():
-    with sqlite3.connect(DB_PATH) as con:
-        con.execute("""
-        CREATE TABLE IF NOT EXISTS Gastos (
-            Id INTEGER PRIMARY KEY AUTOINCREMENT,
-            UserId INTEGER,
-            Valor REAL,
-            Categoria TEXT,
-            Data TEXT,
-            raw_texto TEXT
-        )""")
-
-def preprocess_audio(input_path):
-    output_path = input_path.replace('.oga', '_clean.wav')
-
-    command = [
-        'ffmpeg', '-y', '-i', input_path,
-        '-ac', '1',
-        '-ar', '16000',
-        '-af', 'loudnorm',
-        output_path
-    ]
-    subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    return output_path
-
-def transcribe_audio_with_whisper(audio_path):
-    model = whisper.load_model("tiny") 
-    result = model.transcribe(audio_path, language="pt")
-    return result["text"]
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, MessageHandler, filters, ContextTypes, CommandHandler, CallbackQueryHandler
+from .database import insert_gasto, get_gastos, get_gastos_por_categoria
+from .audio_transcription import preprocess_audio, transcribe_audio_with_whisper
+from .llm_agent import extract_gasto_data
 
 async def handle_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -48,15 +15,13 @@ async def handle_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("❌ Não há gasto pendente para confirmar.")
         return
     if query.data == "confirmar_gasto":
-        with sqlite3.connect(DB_PATH) as con:
-            con.execute("""INSERT INTO Gastos
-                        (UserId, Valor, Categoria, Data, Raw_texto)
-                        VALUES (?, ?, ?, ?, ?)""",
-                        (query.from_user.id,
-                        data["Valor"],
-                        data["Categoria"],
-                        dt.datetime.now().isoformat(),
-                        data["transcript"]))
+        insert_gasto(
+            query.from_user.id,
+            data["Valor"],
+            data["Categoria"],
+            dt.datetime.now().isoformat(),
+            data["transcript"]
+        )
         await query.edit_message_text(
             f"✅ Gasto cadastrado!\n"
             f"💸 Valor: <b>R$ {data['Valor']:.2f}</b>\n"
@@ -85,35 +50,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         await update.message.reply_text("🔎 Analisando o gasto e classificando a categoria...")
         
-        prompt = f"""Você é um extrator de gastos. Retorne somente um JSON no formato:
-                    {{
-                    "Valor": float,
-                    "Categoria": str,
-                    }}
-                    Classifique a categoria do gasto de acordo com estas opções padronizadas:
-                    - "alimentacao" (ex: mercado, lanche, restaurante, comida, padaria)
-                    - "bebida" (ex: cerveja, vinho, bar, refrigerante)
-                    - "transporte" (ex: uber, gasolina, ônibus, metrô, passagem)
-                    - "moradia" (ex: aluguel, condomínio, luz, água, internet)
-                    - "lazer" (ex: cinema, show, viagem, festa)
-                    - "outros" (caso não se encaixe nas anteriores)
-                    Retorne apenas os campos que existem no texto no Formato JSON.
-                    Não retorne nada mais.
-                    Não adicione comentários.
-                    O texto é em português.
-                    Texto: \"{transcript}\""""
-        
-        completion = ollama.chat(
-            model="phi3",
-            messages=[{"role": "user", "content": prompt}]
-        )["message"]["content"]
-       
-        match = re.search(r'\{.*\}', completion, re.DOTALL)
-        if not match:
-            await update.message.reply_text("❌ Não foi possível extrair o JSON da resposta. O gasto não foi registrado. Tente novamente.")
-            return
-        
-        data = json.loads(match.group(0))
+        data = extract_gasto_data(transcript)
 
         context.user_data["pending_gasto"] = {
             "Valor": data["Valor"],
@@ -141,12 +78,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_relatorio(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    with sqlite3.connect(DB_PATH) as con:
-        cursor = con.execute(
-            "SELECT Valor, Categoria, Data, raw_texto FROM Gastos WHERE UserId = ?",
-            (user_id,)
-        )
-        rows = cursor.fetchall()
+    rows = get_gastos(user_id)
     if not rows:
         await update.message.reply_text("Nenhum gasto encontrado para este usuário.")
         return
@@ -163,12 +95,7 @@ async def handle_relatorio(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_grafico(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    with sqlite3.connect(DB_PATH) as con:
-        cursor = con.execute(
-            "SELECT Categoria, SUM(Valor) FROM Gastos WHERE UserId = ? GROUP BY Categoria",
-            (user_id,)
-        )
-        data = cursor.fetchall()
+    data = get_gastos_por_categoria(user_id)
     if not data:
         await update.message.reply_text("Nenhum gasto encontrado para este usuário.")
         return
@@ -199,8 +126,7 @@ async def handle_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(msg)
 
-def main():
-    init_db()
+def setup_bot():
     token = "SEUU_TOKEN_AQUI"  # Substitua pelo seu token do bot
     app = Application.builder().token(token).build()
     app.add_handler(CommandHandler("start", handle_start))
@@ -210,6 +136,10 @@ def main():
     app.add_handler(
         CallbackQueryHandler(handle_confirm, pattern="^(confirmar_gasto|cancelar_gasto)$")
     )
+    return app
+
+def main():
+    app = setup_bot()
     print("ByteGasto bot rodando...")
     app.run_polling()   
 
