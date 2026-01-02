@@ -4,3 +4,6 @@ ffmpeg-python
 pandas
 matplotlib
 python-dotenv
+langgraph
+transformers
+torch
