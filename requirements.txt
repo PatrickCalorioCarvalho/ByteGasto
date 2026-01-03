@@ -1,9 +1,11 @@
 python-telegram-bot
-ollama
-ffmpeg-python
+openai-whisper
+torch
+python-dotenv
+
+langgraph
+langchain
+langchain-ollama
+
 pandas
 matplotlib
-python-dotenv
-langgraph
-transformers
-torch

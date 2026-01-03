@@ -7,6 +7,9 @@ from .database import insert_gasto, get_gastos, get_gastos_por_categoria
 from .audio_transcription import preprocess_audio, transcribe_audio_with_whisper
 from .llm_agent import extract_gasto_data
 
+
+
+
 async def handle_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -38,6 +41,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         voice = update.message.voice
         file = await voice.get_file()
         ogg_path = os.path.join(tempfile.gettempdir(), f"{file.file_id}.oga")
+
         await file.download_to_drive(ogg_path)
         
         await update.message.reply_text("🔊 Convertendo e processando o áudio...")
@@ -74,6 +78,40 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     except Exception as e:
+        await update.message.reply_text("❌ Ocorreu um erro e o gasto não foi registrado corretamente. Por favor, tente novamente.")
+
+async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        await update.message.reply_text("📥 Recebendo sua mensagem...")
+        transcript = update.message.text
+        
+        await update.message.reply_text("🔎 Analisando o gasto e classificando a categoria...")
+        
+        data = extract_gasto_data(transcript)
+
+        context.user_data["pending_gasto"] = {
+            "Valor": data["Valor"],
+            "Categoria": data["Categoria"],
+            "transcript": transcript
+        }
+        keyboard = [
+            [
+                InlineKeyboardButton("✅ Confirmar", callback_data="confirmar_gasto"),
+                InlineKeyboardButton("🔄 Cancelar", callback_data="cancelar_gasto"),
+            ]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text(
+            f"Confirme o cadastro do gasto:\n"
+            f"💸 Valor: <b>R$ {data['Valor']:.2f}</b>\n"
+            f"🏷️ Categoria: <b>{data['Categoria']}</b>\n"
+            f"🗒️ Descrição: \"{transcript}\"",
+            reply_markup=reply_markup,
+            parse_mode="HTML"
+        )
+
+    except Exception as e:
+        print(e)
         await update.message.reply_text("❌ Ocorreu um erro e o gasto não foi registrado corretamente. Por favor, tente novamente.")
 
 async def handle_relatorio(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -127,10 +165,11 @@ async def handle_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg)
 
 def setup_bot():
-    token = "SEUU_TOKEN_AQUI"  # Substitua pelo seu token do bot
-    app = Application.builder().token(token).build()
+    TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "SEU_TOKEN_AQUI")
+    app = Application.builder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", handle_start))
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_handler(CommandHandler("relatorio", handle_relatorio))
     app.add_handler(CommandHandler("grafico", handle_grafico))
     app.add_handler(

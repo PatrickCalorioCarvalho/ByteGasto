@@ -1,43 +1,79 @@
 import json
 import re
-from langgraph import Graph, Node
-from langgraph.llms import HuggingFaceLLM
+import os
+from typing import TypedDict
+from langgraph.graph import StateGraph, END
+from langchain_ollama import OllamaLLM
 
-def extract_gasto_data(transcript):
-    def generate_prompt(transcript):
-        return f"""Você é um extrator de gastos. Retorne somente um JSON no formato:
-                {{
-                "Valor": float,
-                "Categoria": str,
-                }}
-                Classifique a categoria do gasto de acordo com estas opções padronizadas:
-                - "alimentacao" (ex: mercado, lanche, restaurante, comida, padaria)
-                - "bebida" (ex: cerveja, vinho, bar, refrigerante)
-                - "transporte" (ex: uber, gasolina, ônibus, metrô, passagem)
-                - "moradia" (ex: aluguel, condomínio, luz, água, internet)
-                - "lazer" (ex: cinema, show, viagem, festa)
-                - "outros" (caso não se encaixe nas anteriores)
-                Retorne apenas os campos que existem no texto no Formato JSON.
-                Não retorne nada mais.
-                Não adicione comentários.
-                O texto é em português.
-                Texto: \"{transcript}\" """
 
-    def parse_response(response):
-        match = re.search(r'\{.*\}', response, re.DOTALL)
-        if not match:
-            raise ValueError("Não foi possível extrair o JSON da resposta.")
-        return json.loads(match.group(0))
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://SEU_IP_AQUI:11434")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2:1.5b")
 
-    graph = Graph()
-    input_node = Node("Input", lambda x: x)
-    prompt_node = Node("Prompt", generate_prompt)
-    llm = HuggingFaceLLM(model="google/flan-t5-small") 
-    llm_node = Node("LLM", lambda prompt: llm.call(prompt))
 
-    parse_node = Node("Parse", parse_response)
-    graph.connect(input_node, prompt_node)
-    graph.connect(prompt_node, llm_node)
-    graph.connect(llm_node, parse_node)
-    result = graph.run(transcript)
-    return result
+class GastoState(TypedDict):
+    transcript: str
+    response: str
+    gasto: dict
+
+
+llm = OllamaLLM(
+    model=OLLAMA_MODEL,
+    base_url=OLLAMA_BASE_URL,
+    temperature=0
+)
+
+def extract_gasto_node(state: GastoState) -> GastoState:
+    prompt = f"""
+Você é um extrator de gastos.
+
+Retorne APENAS um JSON válido no formato:
+{{
+  "Valor": number,
+  "Categoria": string
+}}
+
+Classifique a categoria do gasto de acordo com estas opções padronizadas: 
+- "alimentacao" (ex: mercado, lanche, restaurante, comida, padaria) 
+- "bebida" (ex: cerveja, vinho, bar, refrigerante) 
+- "transporte" (ex: uber, gasolina, ônibus, metrô, passagem) 
+- "moradia" (ex: aluguel, condomínio, luz, água, internet) 
+- "lazer" (ex: cinema, show, viagem, festa) 
+- "outros" (caso não se encaixe nas anteriores) 
+
+
+Retorne apenas os campos que existem no texto. 
+Não retorne nada além do JSON. 
+Não adicione comentários. 
+O texto é em português.
+
+Texto: "{state['transcript']}"
+"""
+    response = llm.invoke(prompt)
+
+    match = re.search(r"\{.*\}", response, re.DOTALL)
+    if not match:
+        raise ValueError(f"Resposta inválida do LLM: {response}")
+
+    gasto = json.loads(match.group())
+
+    return {
+        "transcript": state["transcript"],
+        "response": response,
+        "gasto": gasto
+    }
+
+
+def _build_graph():
+    graph = StateGraph(GastoState)
+    graph.add_node("extract", extract_gasto_node)
+    graph.set_entry_point("extract")
+    graph.add_edge("extract", END)
+    return graph.compile()
+
+
+_graph = _build_graph()
+
+
+def extract_gasto_data(transcript: str) -> dict:
+    result = _graph.invoke({"transcript": transcript})
+    return result["gasto"]

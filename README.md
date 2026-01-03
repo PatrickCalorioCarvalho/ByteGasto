@@ -8,3 +8,7 @@ Controle seus gastos **falando** no Telegram — ByteGasto transcreve o áudio, 
   - phi3 para extrair dados e gerar SQL.
 - 💾 **SQLite**: zero configuração, perfeito para uso pessoal.
 - 🔎 **Pergunte em PT-BR**: "Quanto gastei com alimentação em maio?" → resposta imediata.
+
+
+## Depentencia
+- choco install ffmpeg -y
