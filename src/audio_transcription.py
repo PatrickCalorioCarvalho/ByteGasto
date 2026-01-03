@@ -5,8 +5,6 @@ import whisper
 
 def preprocess_audio(input_path):
     output_path = input_path.replace('.oga', '_clean.wav')
-    print("Converting audio to WAV format...")
-
     command = [
         'ffmpeg', '-y', '-i', input_path,
         '-ac', '1',
@@ -15,8 +13,6 @@ def preprocess_audio(input_path):
         output_path
     ]
     subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    print("Audio conversion completed.")
-    print(f"Converted audio saved at: {output_path}")
     return output_path
 
 def transcribe_audio_with_whisper(audio_path):
