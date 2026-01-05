@@ -1,0 +1,31 @@
+name: Deploy ByteGasto
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Export secrets to env
+        run: |
+          echo "TELEGRAM_TOKEN=${{ secrets.TELEGRAM_TOKEN }}" >> $GITHUB_ENV
+          echo "OLLAMA_BASE_URL=${{ secrets.OLLAMA_BASE_URL }}" >> $GITHUB_ENV
+          echo "OLLAMA_MODEL=${{ secrets.OLLAMA_MODEL }}" >> $GITHUB_ENV
+
+      - name: Build image
+        run: docker build -t bytegasto:latest .
+
+      - name: Deploy with compose
+        run: |
+          docker compose down
+          docker compose up -d
+      
+      - name: Cleanup unused images
+        run: docker image prune -f

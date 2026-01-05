@@ -1,9 +1,15 @@
+
 services:
   bytegasto:
-    build: .
+    image: bytegasto:latest
     container_name: ByteGasto
-    env_file:
-      - .env
-    volumes:
-      - ./data:/app/data
     restart: unless-stopped
+    environment:
+      TELEGRAM_TOKEN: ${TELEGRAM_TOKEN}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL}
+      OLLAMA_MODEL: ${OLLAMA_MODEL}
+    volumes:
+      - bytegasto_data:/app/data
+
+volumes:
+  bytegasto_data:
