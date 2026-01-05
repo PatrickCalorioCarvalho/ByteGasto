@@ -1,0 +1,9 @@
+services:
+  bytegasto:
+    build: .
+    container_name: ByteGasto
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped

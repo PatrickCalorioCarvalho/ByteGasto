@@ -1,7 +1,7 @@
 import os
 import sqlite3
 
-DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "carteira.db")
+DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)),"data","bytegasto.db")
 
 def init_db():
     with sqlite3.connect(DB_PATH) as con:
