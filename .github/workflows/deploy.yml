@@ -18,7 +18,8 @@ jobs:
           echo "TELEGRAM_TOKEN=${{ secrets.TELEGRAM_TOKEN }}" >> $GITHUB_ENV
           echo "OLLAMA_BASE_URL=${{ secrets.OLLAMA_BASE_URL }}" >> $GITHUB_ENV
           echo "OLLAMA_MODEL=${{ secrets.OLLAMA_MODEL }}" >> $GITHUB_ENV
-
+          echo "WHISPER_MODEL=${{ secrets.WHISPER_MODEL }}" >> $GITHUB_ENV  
+          echo "WHISPER_MODEL_DIR=${{ secrets.WHISPER_MODEL_DIR }}" >> $GITHUB_ENV
       - name: Build image
         run: docker build -t bytegasto:latest .
 

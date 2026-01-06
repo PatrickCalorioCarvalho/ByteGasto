@@ -8,8 +8,12 @@ services:
       TELEGRAM_TOKEN: ${TELEGRAM_TOKEN}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL}
       OLLAMA_MODEL: ${OLLAMA_MODEL}
+      WHISPER_MODEL: ${WHISPER_MODEL}
+      WHISPER_MODEL_DIR: ${WHISPER_MODEL_DIR}
     volumes:
+      - whisper_models:/models/whisper
       - bytegasto_data:/app/data
 
 volumes:
   bytegasto_data:
+  whisper_models:

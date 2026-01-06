@@ -7,9 +7,6 @@ from .database import insert_gasto, get_gastos, get_gastos_por_categoria
 from .audio_transcription import preprocess_audio, transcribe_audio_with_whisper
 from .llm_agent import extract_gasto_data
 
-
-
-
 async def handle_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
