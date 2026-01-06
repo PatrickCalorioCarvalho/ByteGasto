@@ -9,3 +9,4 @@ langchain-ollama
 
 pandas
 matplotlib
+reportlab

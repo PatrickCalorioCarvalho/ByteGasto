@@ -6,6 +6,8 @@ from telegram.ext import Application, MessageHandler, filters, ContextTypes, Com
 from .database import insert_gasto, get_gastos, get_gastos_por_categoria
 from .audio_transcription import preprocess_audio, transcribe_audio_with_whisper
 from .llm_agent import extract_gasto_data
+from .relatorio_pdf import gerar_relatorio_pdf
+from .gerar_grafico import gerar_grafico_gastos_por_categoria
 
 async def handle_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -112,45 +114,53 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Ocorreu um erro e o gasto não foi registrado corretamente. Por favor, tente novamente.")
 
 async def handle_relatorio(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    rows = get_gastos(user_id)
-    if not rows:
-        await update.message.reply_text("Nenhum gasto encontrado para este usuário.")
-        return
+    try:
+        user_id = update.effective_user.id
+        rows = get_gastos(user_id)
 
-    with tempfile.NamedTemporaryFile("w+", newline='', suffix=".csv", delete=False) as csvfile:
-        writer = csv.writer(csvfile)
-        writer.writerow(["Valor", "Categoria", "Data", "Raw_texto"])
-        writer.writerows(rows)
-        csvfile_path = csvfile.name
+        if not rows:
+            await update.message.reply_text("Nenhum gasto encontrado para este usuário.")
+            return
 
-    with open(csvfile_path, "rb") as f:
-        await update.message.reply_document(f, filename="relatorio_gastos.csv")
-    os.remove(csvfile_path)
+        await update.message.reply_text("📄 Gerando o relatório PDF dos seus gastos...")
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as pdf_file:
+            pdf_path = pdf_file.name
+
+        gerar_relatorio_pdf(rows, pdf_path)
+
+        with open(pdf_path, "rb") as f:
+            await update.message.reply_document(
+                f,
+                filename="relatorio_gastos.pdf"
+            )
+
+        os.remove(pdf_path)
+    except Exception as e:
+        print(e)
+        await update.message.reply_text("❌ Ocorreu um erro ao gerar o relatório. Por favor, tente novamente.")
 
 async def handle_grafico(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    data = get_gastos_por_categoria(user_id)
-    if not data:
-        await update.message.reply_text("Nenhum gasto encontrado para este usuário.")
-        return
-    
+    try:
+        user_id = update.effective_user.id
+        data = get_gastos_por_categoria(user_id)
 
-    categorias = [row[0] if row[0] is not None else "Sem categoria" for row in data]
-    valores = [row[1] if row[1] is not None else 0 for row in data]
-    plt.figure(figsize=(8, 5))
-    plt.bar(categorias, valores, color='skyblue')
-    plt.xlabel('Categoria')
-    plt.ylabel('Total Gasto')
-    plt.title('Gastos por Categoria')
-    plt.tight_layout()
-    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as imgfile:
-        plt.savefig(imgfile.name)
-        imgfile_path = imgfile.name
-    plt.close()
-    with open(imgfile_path, "rb") as f:
-        await update.message.reply_photo(f, caption="Gráfico de gastos por categoria")
-    os.remove(imgfile_path)
+        if not data:
+            await update.message.reply_text("Nenhum gasto encontrado para este usuário.")
+            return
+        await update.message.reply_text("📊 Gerando o gráfico dos seus gastos por categoria...")
+        img_path = gerar_grafico_gastos_por_categoria(data)
+
+        with open(img_path, "rb") as f:
+            await update.message.reply_photo(
+                f,
+                caption="📊 Gastos por categoria — ByteGasto"
+            )
+
+        os.remove(img_path)
+    except Exception as e:
+        print(e)
+        await update.message.reply_text("❌ Ocorreu um erro ao gerar o gráfico. Por favor, tente novamente.")
+
 
 async def handle_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = (
